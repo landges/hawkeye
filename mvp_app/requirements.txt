@@ -1,0 +1,8 @@
+fastapi==0.111
+uvicorn[standard]==0.30
+retinaface==0.2.5
+deepface==0.40.1
+faiss-cpu==1.8.0
+opencv-python-headless==4.11.0.0
+python-multipart==0.0.9      # загрузка файлов
+psycopg[binary]==3.2         # если хотите Postgres
