@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  face-search-api:
+    build:
+      context: ../mvp_app          # корень проекта, где лежат Dockerfile и app/
+      dockerfile: Dockerfile
+    container_name: face-search-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"       # host:container
+    environment:
+      # при необходимости переопределите, куда писать индекс
+      - DATA_DIR=/app/data
+    volumes:
+      # индекс FAISS и faces_meta.pkl будут жить на host-диске,
+      # так что они переживут перезапуск контейнера
+      - ./data:/app/data

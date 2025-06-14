@@ -1,8 +1,20 @@
-fastapi==0.111
-uvicorn[standard]==0.30
-retinaface==0.2.5
-deepface==0.40.1
-faiss-cpu==1.8.0
-opencv-python-headless==4.11.0.0
-python-multipart==0.0.9      # загрузка файлов
-psycopg[binary]==3.2         # если хотите Postgres
+# --- веб-стек ---
+fastapi==0.111.0
+uvicorn[standard]==0.30.0     # asgi-сервер
+pydantic==2.7.1               # FastAPI ≥0.111 уже на v2
+
+# --- ML / CV ---
+deepface==0.0.93             # Facenet512 + обёртка
+retinaface==1.1.1            # детектор лиц
+faiss-cpu==1.11.0             # индекс ближайших соседей
+opencv-python-headless==4.6.0.66
+numpy==1.26.4
+
+# --- утилиты ---
+python-multipart==0.0.9       # приём файлов в FastAPI
+uvloop==0.19.0                # +20-30 % RPS (Linux/macOS)
+tensorflow==2.8.0
+# --- системный ---
+# Для RetinaFace нужен torch ≥2 / torchvision.
+# torch==2.3.0             # или установите cuda-билд, если есть GPU
+# torchvision==0.18.0       # версия должна совпадать с torch

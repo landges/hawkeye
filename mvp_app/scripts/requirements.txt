@@ -1,0 +1,6 @@
+opencv-python==4.10.0.82      # если уже ставили headless, повтор не нужен
+moviepy==1.0.3                # subclip / ffmpeg_extract_subclip
+imageio[ffmpeg]==2.34.0       # встроенный бинарный FFmpeg
+tqdm==4.66.4                  # прогресс-бар
+requests==2.32.3              # HTTP к FastAPI
+numpy==1.26.4

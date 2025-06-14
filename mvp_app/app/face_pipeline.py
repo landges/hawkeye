@@ -75,73 +75,91 @@
 #     cv2.rectangle(bgr, (x1,y1), (x2,y2), (0,255,0), 2)
 # plt.figure(figsize=(7,5)); plt.imshow(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)); plt.axis("off")
 # plt.show()
-from typing import Any, Dict, List, Union
+# detect_align_embed.py  (файл с помощью/детекцией)
+
+from typing import Any, Dict, List
 from retinaface import RetinaFace
 from deepface import DeepFace
-import cv2
-import numpy as np
-import math
-import matplotlib.pyplot as plt
+import cv2, numpy as np, math
 
-IMG = "./mvp_app/test_files/photo_2025-02-02_19-14-49.jpg"
-THR = 0.9                  # RetinaFace threshold
-TARGET_EYE_DIST = 100      # ширина между глазами в итоговом кропе
-CROP_SIZE = 424            # итоговый квадрат для DeepFace
+THR            = 0.9      # RetinaFace score threshold
+MIN_FACE       = 20       # px: игнорируем лица мельче
+MARGIN         = 0.25     # доля bbox добавляется по всем сторонам
+TARGET_EYE_DIST = 100
+CROP_SIZE       = 224     # итоговый квадрат для Facenet512
 
-# ------------------ helpers ------------------
+# ---------- helpers ----------
 def angle_between(p1, p2):
-    """угол (°) наклона линии p1-p2 относительно горизонтали"""
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     return math.degrees(math.atan2(dy, dx))
 
-def align_face(img, landmarks):
-    """
-    landmarks: dict('left_eye':(x,y), 'right_eye':(x,y), …)
-    ➜ возвращает уже выровненный квадрат 224×224 BGR
-    """
+def align_face(face_bgr: np.ndarray, landmarks):
+    """Выравнивает один кроп лица → квадрат CROP_SIZE×CROP_SIZE (BGR)."""
     l_eye = np.array(landmarks["left_eye"])
     r_eye = np.array(landmarks["right_eye"])
     center_eye = (l_eye + r_eye) / 2
 
-    # 1) угол поворота
+    # угол
     ang = angle_between(r_eye, l_eye)
-
-    # 2) масштаб: хотим фиксированное расстояние между глазами
+    # масштаб
     cur_dist = np.linalg.norm(r_eye - l_eye)
     scale = TARGET_EYE_DIST / cur_dist
 
-    # 3) построить аффинную матрицу (вращение + масштаб + сдвиг)
+    # аффин-матрица
     M = cv2.getRotationMatrix2D(tuple(center_eye), ang, scale)
 
-    # 4) сдвинем так, чтобы глаза оказались примерно посередине кропа
-    tx = CROP_SIZE * 0.5 - center_eye[0]
-    ty = CROP_SIZE * 0.35 - center_eye[1]  # глаза чуть выше центра
-    M[0, 2] += tx
-    M[1, 2] += ty
+    # сдвигаем, чтобы глаза оказались ~35 % сверху
+    M[0, 2] += CROP_SIZE * 0.5 - center_eye[0]
+    M[1, 2] += CROP_SIZE * 0.35 - center_eye[1]
 
-    aligned = cv2.warpAffine(img, M, (CROP_SIZE, CROP_SIZE),
-                             flags=cv2.INTER_LINEAR,
-                             borderMode=cv2.BORDER_REFLECT_101)
-    return aligned
+    return cv2.warpAffine(
+        face_bgr, M, (CROP_SIZE, CROP_SIZE),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REFLECT_101
+    )
 
-# ------------------ main ------------------
+# ---------- main ----------
 def detect_align_embed(bgr: np.ndarray) -> List[Dict[str, Any]]:
-    """Detect all faces, align, embed. Returns list of dicts with bbox, vec."""
-    result = []
-    detections = RetinaFace.detect_faces(bgr, threshold=THR,)
-    for info in detections.values():
+    """Возвращает [{'bbox':[x1,y1,x2,y2], 'vec':512f32}, ...]"""
+    H, W = bgr.shape[:2]
+    dets = RetinaFace.detect_faces(bgr, threshold=THR) or {}
+    out: List[Dict[str, Any]] = []
+
+    for info in dets.values():
         x1, y1, x2, y2 = map(int, info["facial_area"])
-        lm = info["landmarks"]
-        aligned = align_face(bgr, lm)
+        w, h = x2 - x1, y2 - y1
+        if w < MIN_FACE or h < MIN_FACE:
+            continue                               # слишком маленькое лицо
+
+        # расширяем bbox на MARGIN
+        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+        w2, h2 = int(w * (1 + MARGIN) / 2), int(h * (1 + MARGIN) / 2)
+        x1e, y1e = max(0, cx - w2), max(0, cy - h2)
+        x2e, y2e = min(W, cx + w2), min(H, cy + h2)
+
+        # вырезаем кроп и сдвигаем landmarks
+        face_crop = bgr[y1e:y2e, x1e:x2e].copy()
+        lm_shifted = {
+            k: (np.array(v) - np.array([x1e, y1e]))
+            for k, v in info["landmarks"].items()
+        }
+
+        aligned = align_face(face_crop, lm_shifted)
+
         rep = DeepFace.represent(
             img_path=aligned,
             model_name="Facenet512",
             detector_backend="skip",
             enforce_detection=False,
         )[0]["embedding"]
-        vec = np.asarray(rep, dtype="float32")
-        result.append({"bbox": [x1, y1, x2, y2], "vec": vec})
-    return result
+
+        out.append({
+            "bbox": [x1, y1, x2, y2],
+            "vec":  np.asarray(rep, dtype="float32")
+        })
+
+    return out
+
 
 # ----- в удобные массивы -----
 # embeddings = np.asarray(embeddings, dtype="float32")  # (n,512)
